@@ -10,28 +10,25 @@ export default function Home() {
   useEffect(() => {
     async function fetchData() {
       try {
-        // ⭐ Parse response correctly
-        const response = await getMovies({ limit: 6 });
-        console.log("Home page API Response:", response); // Debug log
-        
-        // Handle API response format: { success: true, data: [...], meta: {...} }
-        const movies = response.data || [];
-        
-        if (Array.isArray(movies)) {
-          setFeaturedMovies(movies.slice(0, 6));
-        } else {
-          console.error("Invalid movies format:", movies);
-          setFeaturedMovies([]);
-        }
-      } catch (err) {
-        console.error("Error loading movies:", err);
-        setFeaturedMovies([]);
+        const res = await getMovies({ page: 1, limit: 12, sort: 'rating' });
+        setFeaturedMovies(res.data || []);
+      } catch (error) {
+        console.error("Error loading featured movies:", error);
       } finally {
         setLoading(false);
       }
     }
     fetchData();
   }, []);
+
+  // ⭐ Define genres with proper formatting
+  const genres = [
+    "Action", "Adventure", "Animation", "Comedy", 
+    "Crime", "Documentary", "Drama", "Family", 
+    "Fantasy", "History", "Horror", "Music", 
+    "Mystery", "Romance", "Science Fiction", "Thriller", 
+    "TV Movie", "War", "Western"
+  ];
 
   return (
     <div className="min-h-screen bg-netflix-black">
@@ -92,12 +89,12 @@ export default function Home() {
                 <div className="text-sm text-netflix-light">Bộ phim</div>
               </div>
               <div>
-                <div className="text-3xl font-bold text-white">50M+</div>
-                <div className="text-sm text-netflix-light">Lượt xem</div>
+                <div className="text-3xl font-bold text-white">100+</div>
+                <div className="text-sm text-netflix-light">Thể loại</div>
               </div>
               <div>
-                <div className="text-3xl font-bold text-white">4.9</div>
-                <div className="text-sm text-netflix-light">Đánh giá</div>
+                <div className="text-3xl font-bold text-white">50K+</div>
+                <div className="text-sm text-netflix-light">Người dùng</div>
               </div>
             </div>
           </div>
@@ -105,7 +102,7 @@ export default function Home() {
 
         {/* Scroll Indicator */}
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce">
-          <svg className="w-6 h-6 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
           </svg>
         </div>
@@ -138,13 +135,13 @@ export default function Home() {
 
           {loading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 md:gap-6">
-              {[...Array(6)].map((_, i) => (
+              {[...Array(12)].map((_, i) => (
                 <div key={i} className="aspect-[2/3] bg-netflix-gray rounded-lg animate-pulse" />
               ))}
             </div>
           ) : featuredMovies.length === 0 ? (
-            <div className="text-center py-20 glass-card">
-              <svg className="w-24 h-24 mx-auto text-netflix-gray mb-6" fill="none" 
+            <div className="text-center py-12 glass-card rounded-2xl">
+              <svg className="w-20 h-20 mx-auto text-netflix-light mb-4" fill="none" 
                    stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                       d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4" />
@@ -165,13 +162,7 @@ export default function Home() {
                   className="animate-slide-up"
                   style={{ animationDelay: `${index * 100}ms` }}
                 >
-                  <MovieCard
-                    id={movie.id}
-                    title={movie.title}
-                    poster={movie.poster}
-                    year={movie.year}
-                    rating={movie.avgRating}
-                  />
+                  <MovieCard movie={movie} />
                 </div>
               ))}
             </div>
@@ -186,28 +177,31 @@ export default function Home() {
             Khám phá theo thể loại
           </h2>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {["Action", "Adventure", "Animation", "Comedy", "Crime", "Documentary", "Drama", "Family", "Fantasy", "History", "Horror", "Music", "Mystery", "Romance", "Science Fiction", "Thriller", "TV Movie", "War", "Western"].map(
-              (genre, index) => (
-                <Link
-                  key={genre}
-                  to={`/movies?genre=${genre}`}
-                  className="group relative overflow-hidden rounded-lg aspect-video
-                           bg-gradient-to-br from-netflix-gray to-netflix-dark
-                           hover:from-netflix-red/20 hover:to-netflix-dark
-                           border border-white/5 hover:border-netflix-red/30
-                           transition-all duration-500"
-                  style={{ animationDelay: `${index * 50}ms` }}
-                >
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-lg font-semibold text-white 
-                                   group-hover:scale-110 transition-transform duration-300">
-                      {genre}
-                    </span>
-                  </div>
-                </Link>
-              )
-            )}
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            {genres.map((genre, index) => (
+              <Link
+                key={genre}
+                to={`/movies?genre=${encodeURIComponent(genre)}`}
+                className="group relative overflow-hidden rounded-lg aspect-video
+                         bg-gradient-to-br from-netflix-gray to-netflix-dark
+                         hover:from-netflix-red/20 hover:to-netflix-dark
+                         border border-white/5 hover:border-netflix-red/30
+                         transition-all duration-500 transform hover:scale-105
+                         animate-slide-up"
+                style={{ animationDelay: `${index * 50}ms` }}
+              >
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-lg font-semibold text-white 
+                                 group-hover:scale-110 transition-transform duration-300">
+                    {genre}
+                  </span>
+                </div>
+
+                {/* Hover effect */}
+                <div className="absolute inset-0 bg-gradient-to-r from-netflix-red/0 to-netflix-red/10 
+                              opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              </Link>
+            ))}
           </div>
         </div>
       </section>

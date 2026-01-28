@@ -59,7 +59,7 @@ export default function Movies() {
       console.log("🔄 Fetching movies with params:", {
         page: currentPage,
         limit: 24,
-        genre: selectedGenre !== "all" ? selectedGenre : undefined,
+        genre: selectedGenre !== "all" ? selectedGenre : undefined, // ✅ Correct
         search: searchQuery || undefined,
         sort: sortBy,
       });
@@ -67,7 +67,7 @@ export default function Movies() {
       const response = await getMovies({
         page: currentPage,
         limit: 24,
-        genre: selectedGenre !== "all" ? selectedGenre : undefined, // ⭐ Gửi genre name
+        genre: selectedGenre !== "all" ? selectedGenre : undefined, // ✅ Sends genre name
         search: searchQuery || undefined,
         sort: sortBy,
       });

@@ -13,112 +13,138 @@ export const getAll = async (query: any) => {
   // Build WHERE clause
   const where: any = {};
   
-  // ⭐ FIX: Filter by genre name (case-insensitive)
+  // ⭐ Genre filter: Use contains WITHOUT mode (Prisma limitation)
   if (genre && genre !== 'all') {
     where.movie_genres = {
       some: {
         genres: {
           name: {
-            equals: genre, // ⭐ Use exact match (case-sensitive)
-            mode: 'insensitive', // ⭐ Make it case-insensitive
+            contains: genre, // ✅ No mode on nested relations
           },
         },
       },
     };
-    console.log("🎯 Filtering by genre:", genre);
+    console.log("🎯 Filtering by genre (contains):", genre);
   }
 
-  // ⭐ Fetch movies từ database với filter
-  const [movies, totalMovies] = await Promise.all([
-    prisma.movies.findMany({
-      where,
-      skip,
-      take: limit,
-      orderBy: { created_at: "desc" },
-      include: {
-        movie_genres: {
-          include: {
-            genres: true,
-          },
-        },
-        movie_casts: {
-          include: {
-            people: true,
-          },
-        },
-      },
-    }),
-    prisma.movies.count({ where }),
-  ]);
-
-  console.log(`📊 Found ${movies.length} movies (total: ${totalMovies})`);
-
-  // ⭐ Fetch ratings from movies_cleaned for ALL movies at once
-  const movieIds = movies.map(m => m.id);
-   const movieRatingsData = await prisma.$queryRawUnsafe<any[]>(
-    `SELECT movie_id, rating, rating_count FROM movies_cleaned WHERE movie_id IN (${movieIds.join(',')})` 
-  );
-
-  // Create a map for quick lookup
-  const ratingsMap = new Map<number, { rating: number; rating_count: number }>();
-  movieRatingsData.forEach(row => {
-    ratingsMap.set(row.movie_id, {
-      rating: row.rating || 0,
-      rating_count: row.rating_count || 0,
-    });
-  });
-
-  // Filter by search
-  let filteredMovies = movies;
-  
+  // Search filter (mode works on direct fields)
   if (search) {
-    const searchLower = search.toLowerCase();
-    filteredMovies = movies.filter((movie) => {
-      const titleMatch = movie.title?.toLowerCase().includes(searchLower);
-      const descMatch = movie.description?.toLowerCase().includes(searchLower);
-      return titleMatch || descMatch;
-    });
+    where.OR = [
+      { title: { contains: search, mode: 'insensitive' } },
+      { description: { contains: search, mode: 'insensitive' } },
+    ];
+    console.log("🔍 Searching for:", search);
   }
 
-  // ⭐ Map movies with rating from movies_cleaned
-  const moviesWithRatings = filteredMovies.map((movie) => {
-    const sortedData = ratingsMap.get(movie.id);
-    const avgRating = sortedData?.rating || 0;
-    const ratingsCount = sortedData?.rating_count || 0;
+  // Build ORDER BY clause
+  let orderBy: any = { created_at: "desc" };
+
+  switch (sort) {
+    case 'rating':
+      orderBy = { final_score: 'desc' };
+      break;
+    case 'title':
+      orderBy = { title: 'asc' };
+      break;
+    case 'year':
+      orderBy = { year: 'desc' };
+      break;
+  }
+
+  console.log("📊 Order by:", orderBy);
+
+  try {
+    // Fetch movies
+    const [movies, totalMovies] = await Promise.all([
+      prisma.movies.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy,
+        include: {
+          movie_genres: {
+            include: {
+              genres: true,
+            },
+          },
+          movie_casts: {
+            include: {
+              people: true,
+            },
+          },
+        },
+      }),
+      prisma.movies.count({ where }),
+    ]);
+
+    console.log(`📊 Found ${movies.length} movies (total: ${totalMovies})`);
+
+    if (movies.length === 0) {
+      return {
+        data: [],
+        meta: {
+          total: 0,
+          page,
+          totalPages: 0,
+        },
+      };
+    }
+
+    // Get ratings from movies_cleaned
+    const movieIds = movies.map(m => m.id);
+    const movieRatingsData = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT movie_id, rating, rating_count FROM movies_cleaned WHERE movie_id IN (${movieIds.join(',')})`
+    );
+
+    const ratingsMap = new Map();
+    movieRatingsData.forEach(r => {
+      ratingsMap.set(r.movie_id, {
+        rating: r.rating,
+        rating_count: r.rating_count
+      });
+    });
+
+    // Map movies with ratings
+    const data = movies.map((movie) => {
+      const ratingData = ratingsMap.get(movie.id);
+
+      return {
+        id: movie.id,
+        title: movie.title,
+        description: movie.description,
+        poster: movie.poster,
+        year: movie.year,
+        duration: movie.duration,
+        trailer_url: movie.trailer_url,
+        avgRating: ratingData ? Number(ratingData.rating.toFixed(1)) : 0,
+        ratingsCount: ratingData ? ratingData.rating_count : 0,
+        genres: movie.movie_genres.map((mg) => ({
+          id: mg.genres.id,
+          name: mg.genres.name,
+        })),
+        casts: movie.movie_casts.map((mc) => ({
+          id: mc.people.id,
+          name: mc.people.name,
+          role: mc.people.role,
+          avatar: mc.people.avatar,
+        })),
+      };
+    });
+
+    const totalPages = Math.ceil(totalMovies / limit);
 
     return {
-      id: movie.id,
-      title: movie.title,
-      description: movie.description,
-      poster: movie.poster,
-      year: movie.year,
-      duration: movie.duration,
-      avgRating: Number(avgRating.toFixed(1)),
-      ratingsCount: ratingsCount,
-      genres: movie.movie_genres.map((mg) => ({
-        id: mg.genres.id,
-        name: mg.genres.name,
-      })),
+      data,
+      meta: {
+        total: totalMovies,
+        page,
+        totalPages,
+      },
     };
-  });
-
-  // ⭐ Sort by rating if needed
-  if (sort === 'rating') {
-    moviesWithRatings.sort((a, b) => b.avgRating - a.avgRating);
+  } catch (error: any) {
+    console.error("❌ Error in getAll movies:", error);
+    throw error;
   }
-
-  const total = moviesWithRatings.length;
-  const paginatedMovies = moviesWithRatings.slice(skip, skip + limit);
-
-  return {
-    data: paginatedMovies,
-    meta: {
-      page,
-      limit,
-      total: totalMovies,
-      totalPages: Math.ceil(totalMovies / limit),
-    },
-  };
 };
 
 export const getById = async (id: number) => {

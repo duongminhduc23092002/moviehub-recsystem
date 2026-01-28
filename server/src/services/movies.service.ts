@@ -6,86 +6,85 @@ export const getAll = async (query: any) => {
   const skip = (page - 1) * limit;
   const search = query.search ? String(query.search).trim() : undefined;
   const genre = query.genre ? String(query.genre).trim() : undefined;
-  const sort = query.sort || 'latest'; // ⭐ Get sort param
+  const sort = query.sort || 'latest';
+
+  console.log("🔍 getAll movies with params:", { page, limit, search, genre, sort });
 
   // Build WHERE clause
   const where: any = {};
   
-  // Genre filter first (more efficient)
+  // ⭐ FIX: Filter by genre name (case-insensitive)
   if (genre && genre !== 'all') {
     where.movie_genres = {
       some: {
         genres: {
           name: {
-            contains: genre,
+            equals: genre, // ⭐ Use exact match (case-sensitive)
+            mode: 'insensitive', // ⭐ Make it case-insensitive
           },
         },
       },
     };
+    console.log("🎯 Filtering by genre:", genre);
   }
 
-  // ⭐ Build ORDER BY clause based on sort param
-  let orderBy: any = { created_at: "desc" }; // Default: latest
+  // ⭐ Fetch movies từ database với filter
+  const [movies, totalMovies] = await Promise.all([
+    prisma.movies.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { created_at: "desc" },
+      include: {
+        movie_genres: {
+          include: {
+            genres: true,
+          },
+        },
+        movie_casts: {
+          include: {
+            people: true,
+          },
+        },
+      },
+    }),
+    prisma.movies.count({ where }),
+  ]);
 
-  switch (sort) {
-    case 'rating':
-      // Sort by average rating (calculated from ratings)
-      // We'll do this in-memory after fetching
-      orderBy = { created_at: "desc" }; // Fetch all first
-      break;
-    case 'title':
-      orderBy = { title: "asc" }; // A-Z
-      break;
-    case 'year':
-      orderBy = { year: "desc" }; // Newest year first
-      break;
-    case 'latest':
-    default:
-      orderBy = { created_at: "desc" };
-      break;
-  }
+  console.log(`📊 Found ${movies.length} movies (total: ${totalMovies})`);
 
-  // Fetch movies with optional genre filter
-  const allMovies = await prisma.movies.findMany({
-    where,
-    include: {
-      movie_genres: {
-        include: {
-          genres: true,
-        },
-      },
-      movie_casts: {
-        include: {
-          people: true,
-        },
-      },
-      ratings: {
-        select: {
-          score: true,
-        },
-      },
-    },
-    orderBy,
+  // ⭐ Fetch ratings from movies_cleaned for ALL movies at once
+  const movieIds = movies.map(m => m.id);
+   const movieRatingsData = await prisma.$queryRawUnsafe<any[]>(
+    `SELECT movie_id, rating, rating_count FROM movies_cleaned WHERE movie_id IN (${movieIds.join(',')})` 
+  );
+
+  // Create a map for quick lookup
+  const ratingsMap = new Map<number, { rating: number; rating_count: number }>();
+  movieRatingsData.forEach(row => {
+    ratingsMap.set(row.movie_id, {
+      rating: row.rating || 0,
+      rating_count: row.rating_count || 0,
+    });
   });
 
-  // Client-side case-insensitive search (works with all databases)
-  let filteredMovies = allMovies;
+  // Filter by search
+  let filteredMovies = movies;
   
   if (search) {
     const searchLower = search.toLowerCase();
-    filteredMovies = allMovies.filter((movie) => {
+    filteredMovies = movies.filter((movie) => {
       const titleMatch = movie.title?.toLowerCase().includes(searchLower);
       const descMatch = movie.description?.toLowerCase().includes(searchLower);
       return titleMatch || descMatch;
     });
   }
 
-  // ⭐ Calculate avgRating for each movie and sort by rating if needed
+  // ⭐ Map movies with rating from movies_cleaned
   const moviesWithRatings = filteredMovies.map((movie) => {
-    const ratings = movie.ratings || [];
-    const avgRating = ratings.length > 0
-      ? ratings.reduce((sum, r) => sum + r.score, 0) / ratings.length
-      : 0;
+    const sortedData = ratingsMap.get(movie.id);
+    const avgRating = sortedData?.rating || 0;
+    const ratingsCount = sortedData?.rating_count || 0;
 
     return {
       id: movie.id,
@@ -94,22 +93,16 @@ export const getAll = async (query: any) => {
       poster: movie.poster,
       year: movie.year,
       duration: movie.duration,
-      trailer_url: movie.trailer_url,
-      created_at: movie.created_at,
       avgRating: Number(avgRating.toFixed(1)),
+      ratingsCount: ratingsCount,
       genres: movie.movie_genres.map((mg) => ({
         id: mg.genres.id,
         name: mg.genres.name,
       })),
-      casts: movie.movie_casts.map((mc) => ({
-        id: mc.people.id,
-        name: mc.people.name,
-        role: mc.people.role,
-      })),
     };
   });
 
-  // ⭐ Sort by rating if needed (in-memory)
+  // ⭐ Sort by rating if needed
   if (sort === 'rating') {
     moviesWithRatings.sort((a, b) => b.avgRating - a.avgRating);
   }
@@ -120,161 +113,80 @@ export const getAll = async (query: any) => {
   return {
     data: paginatedMovies,
     meta: {
-      total,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page,
+      page,
       limit,
+      total: totalMovies,
+      totalPages: Math.ceil(totalMovies / limit),
     },
   };
 };
 
 export const getById = async (id: number) => {
-  const movie = await prisma.movies.findUnique({
-    where: { id },
-    include: {
-      movie_genres: {
-        include: { genres: true },
-      },
-      movie_casts: {
-        include: { people: true },
-      },
-      ratings: {
-        include: {
-          users: {
-            select: { id: true, name: true },
-          },
-        },
-        orderBy: { created_at: "desc" },
-      },
-    },
-  });
-
-  if (!movie) return null;
-
-  // Calculate average rating
-  const ratings = movie.ratings || [];
-  const avgRating = ratings.length > 0
-    ? ratings.reduce((sum, r) => sum + r.score, 0) / ratings.length
-    : 0;
-
-  return {
-    id: movie.id,
-    title: movie.title,
-    description: movie.description,
-    poster: movie.poster,
-    year: movie.year,
-    duration: movie.duration,
-    trailer_url: movie.trailer_url,
-    avgRating: Number(avgRating.toFixed(1)),
-    genres: movie.movie_genres.map((mg) => ({
-      id: mg.genres.id,
-      name: mg.genres.name,
-    })),
-    casts: movie.movie_casts.map((mc) => ({
-      id: mc.people.id,
-      name: mc.people.name,
-      avatar: mc.people.avatar,
-      role: mc.people.role,
-    })),
-    ratings: movie.ratings.map((r) => ({
-      id: r.id,
-      score: r.score,
-      comment: r.comment,
-      created_at: r.created_at,
-      users: r.users,
-    })),
-  };
-};
-
-export const getRatings = async (movieId: number) => {
-  const ratings = await prisma.ratings.findMany({
-    where: { movie_id: movieId },
-    include: {
-      users: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-    },
-    orderBy: { created_at: "desc" },
-  });
-
-  return ratings.map((r) => ({
-    id: r.id,
-    score: r.score,
-    comment: r.comment,
-    created_at: r.created_at,
-    user: r.users,
-  }));
-};
-
-export const rateMovie = async (data: {
-  userId: number;
-  movieId: number;
-  score: number;
-  comment?: string;
-}) => {
-  const { userId, movieId, score, comment } = data;
-
-  // Check if user already rated this movie
-  const existingRating = await prisma.ratings.findFirst({
-    where: {
-      user_id: userId,
-      movie_id: movieId,
-    },
-  });
-
-  let rating;
-
-  if (existingRating) {
-    // Update existing rating
-    rating = await prisma.ratings.update({
-      where: { id: existingRating.id },
-      data: {
-        score,
-        comment: comment || null,
-      },
-      include: {
-        users: {
-          select: { id: true, name: true },
-        },
-      },
-    });
-  } else {
-    // Create new rating
-    rating = await prisma.ratings.create({
-      data: {
-        user_id: userId,
-        movie_id: movieId,
-        score,
-        comment: comment || null,
-      },
-      include: {
-        users: {
-          select: { id: true, name: true },
-        },
-      },
-    });
-  }
-  
-  // ⭐ THÊM DÒNG NÀY: Sync sau khi rate
   try {
-    await syncUsersData(userId);
-    console.log(`✅ Synced users_data for user ${userId} after rating`);
+    const movie = await prisma.movies.findUnique({
+      where: { id },
+      include: {
+        movie_genres: {
+          include: { genres: true },
+        },
+        movie_casts: {
+          include: { people: true },
+        },
+        // ❌ DELETE: Không query ratings nữa
+        // ratings: {
+        //   include: { users: { select: { id: true, name: true } } },
+        //   orderBy: { created_at: "desc" },
+        // },
+      },
+    });
+
+    if (!movie) return null;
+
+    // ⭐ Lấy rating từ movies_cleaned
+    const movieCleaned = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT rating, rating_count FROM movies_cleaned WHERE movie_id = ?`,
+      id
+    );
+
+    const avgRating = movieCleaned[0]?.rating || 0;
+    const ratingsCount = movieCleaned[0]?.rating_count || 0;
+
+    console.log(`📊 Movie ${id} - Rating: ${avgRating}, Count: ${ratingsCount} (from movies_cleaned)`);
+
+    return {
+      id: movie.id,
+      title: movie.title,
+      description: movie.description,
+      poster: movie.poster,
+      year: movie.year,
+      duration: movie.duration,
+      trailer_url: movie.trailer_url,
+      avgRating: Number(avgRating.toFixed(1)),
+      ratingsCount: ratingsCount,
+      genres: movie.movie_genres.map((mg) => ({
+        id: mg.genres.id,
+        name: mg.genres.name,
+      })),
+      casts: movie.movie_casts.map((mc) => ({
+        id: mc.people.id,
+        name: mc.people.name,
+        role: mc.people.role,
+        avatar: mc.people.avatar,
+      })),
+      // ❌ DELETE: Không return ratings array
+      // ratings: [],
+    };
   } catch (error) {
-    console.error(`⚠️ Failed to sync users_data for user ${userId}:`, error);
-    // Không throw error để không ảnh hưởng đến rating
+    console.error("❌ Error in getById movie:", error);
+    throw error;
   }
-  
-  return {
-    id: rating.id,
-    score: rating.score,
-    comment: rating.comment,
-    created_at: rating.created_at,
-    users: rating.users,
-  };
 };
+
+// ❌ DELETE: Xóa hàm getRatings (không dùng nữa)
+// export const getRatings = async (movieId: number) => { ... }
+
+// ❌ DELETE: Xóa hàm rateMovie (không dùng nữa)
+// export const rateMovie = async (data: { ... }) => { ... }
 
 /**
  * Đồng bộ dữ liệu từ ratings và watchlist sang users_data
@@ -298,47 +210,47 @@ export const syncUsersData = async (userId: number) => {
     );
 
     // Lấy ratings của user
-    const ratings = await prisma.ratings.findMany({
-      where: { user_id: userId },
-      select: { movie_id: true, score: true },
-    });
+    // const ratings = await prisma.ratings.findMany({
+    //   where: { user_id: userId },
+    //   select: { movie_id: true, score: true },
+    // });
 
     // Lấy watchlist của user
-    const watchlist = await prisma.watchlist.findMany({
-      where: { user_id: userId },
-      select: { movie_id: true },
-    });
+    // const watchlist = await prisma.watchlist.findMany({
+    //   where: { user_id: userId },
+    //   select: { movie_id: true },
+    // });
 
-    const watchlistMovieIds = new Set(watchlist.map(w => w.movie_id));
+    // const watchlistMovieIds = new Set(watchlist.map(w => w.movie_id));
 
-    // Insert vào users_data
-    for (const rating of ratings) {
-      const isLiked = watchlistMovieIds.has(rating.movie_id);
+    // // Insert vào users_data
+    // for (const rating of ratings) {
+    //   const isLiked = watchlistMovieIds.has(rating.movie_id);
       
-      await prisma.$executeRawUnsafe(
-        `INSERT INTO users_data (user_id, movie_id, user_rate, liked) VALUES (?, ?, ?, ?)`,
-        user.email,
-        rating.movie_id,
-        rating.score || 0,
-        isLiked ? 1 : 0
-      );
-    }
+    //   await prisma.$executeRawUnsafe(
+    //     `INSERT INTO users_data (user_id, movie_id, user_rate, liked) VALUES (?, ?, ?, ?)`,
+    //     user.id,
+    //     rating.movie_id,
+    //     rating.score || 0,
+    //     isLiked ? 1 : 0
+    //   );
+    // }
 
-    // Thêm các phim trong watchlist mà chưa có rating
-    for (const item of watchlist) {
-      const hasRating = ratings.some(r => r.movie_id === item.movie_id);
-      if (!hasRating) {
-        await prisma.$executeRawUnsafe(
-          `INSERT INTO users_data (user_id, movie_id, user_rate, liked) VALUES (?, ?, ?, ?)`,
-          user.email,
-          item.movie_id,
-          5.0, // Default rating cho watchlist items
-          1
-        );
-      }
-    }
+    // // Thêm các phim trong watchlist mà chưa có rating
+    // for (const item of watchlist) {
+    //   const hasRating = ratings.some(r => r.movie_id === item.movie_id);
+    //   if (!hasRating) {
+    //     await prisma.$executeRawUnsafe(
+    //       `INSERT INTO users_data (user_id, movie_id, user_rate, liked) VALUES (?, ?, ?, ?)`,
+    //       user.email,
+    //       item.movie_id,
+    //       5.0, // Default rating cho watchlist items
+    //       1
+    //     );
+    //   }
+    // }
 
-    console.log(`✅ Synced ${ratings.length} ratings + ${watchlist.length} watchlist items`);
+    console.log(`✅ Synced 0 ratings + 0 watchlist items`);
   } catch (error) {
     console.error("❌ Error syncing users_data:", error);
   }
@@ -357,18 +269,21 @@ export const syncMoviesSorted = async () => {
         movie_genres: {
           include: { genres: true },
         },
-        ratings: {
-          select: { score: true },
-        },
+        // ❌ REMOVE: ratings include
+        // ratings: {
+        //   select: { score: true },
+        // },
       },
     });
 
     for (const movie of movies) {
-      // Tính final_score (average rating)
-      const ratings = movie.ratings.filter(r => r.score !== null);
-      const avgRating = ratings.length > 0
-        ? ratings.reduce((sum, r) => sum + r.score!, 0) / ratings.length
-        : 0;
+      // ⭐ Tính final_score từ movies_cleaned thay vì ratings
+      const movieCleaned = await prisma.$queryRawUnsafe<any[]>(
+        `SELECT rating FROM movies_cleaned WHERE movie_id = ?`,
+        movie.id
+      );
+      
+      const avgRating = movieCleaned[0]?.rating || 0;
 
       // Genres as comma-separated string
       const genres = movie.movie_genres
@@ -429,16 +344,20 @@ export const fullSync = async () => {
   console.log("✅ Full sync completed");
 };
 
-// ...existing code...
-
+/**
+ * Get top 10 movies by final_score from movies table
+ * ⭐ Lấy trực tiếp từ bảng movies (có cột final_score)
+ */
 export const getTopRatedMovies = async (limit: number = 10) => {
   try {
-    // Fetch movies với final_score cao nhất từ bảng movies
-    const movies = await prisma.movies.findMany({
+    console.log(`🏆 Fetching top ${limit} movies by final_score from movies table...`);
+
+    // ⭐ Query trực tiếp từ bảng movies
+    const topMovies = await prisma.movies.findMany({
       where: {
         final_score: {
           not: null,
-          gt: 0, // Chỉ lấy phim có final_score > 0
+          gt: 0, // Only movies with final_score > 0
         },
       },
       include: {
@@ -452,24 +371,39 @@ export const getTopRatedMovies = async (limit: number = 10) => {
             people: true,
           },
         },
-        ratings: {
-          select: {
-            score: true,
-          },
-        },
       },
       orderBy: {
-        final_score: 'desc', // Sắp xếp theo final_score giảm dần
+        final_score: 'desc', // ⭐ Sort by final_score DESC
       },
-      take: limit,
+      take: limit, // ⭐ Limit results
     });
 
-    // Map to proper format
-    const topRated = movies.map((movie) => {
-      const ratings = movie.ratings || [];
-      const avgRating = ratings.length > 0
-        ? ratings.reduce((sum, r) => sum + r.score, 0) / ratings.length
-        : movie.final_score || 0;
+    if (topMovies.length === 0) {
+      console.warn("⚠️ No movies with final_score found in movies table");
+      return [];
+    }
+
+    console.log(`✅ Found ${topMovies.length} top movies by final_score`);
+
+    // ⭐ Get ratings from movies_cleaned for display
+    const movieIds = topMovies.map(m => m.id);
+    const movieRatingsData = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT movie_id, rating, rating_count 
+       FROM movies_cleaned 
+       WHERE movie_id IN (${movieIds.join(',')})` 
+    );
+
+    const ratingsMap = new Map<number, { rating: number; rating_count: number }>();
+    movieRatingsData.forEach(row => {
+      ratingsMap.set(row.movie_id, {
+        rating: row.rating || 0,
+        rating_count: row.rating_count || 0,
+      });
+    });
+
+    // ⭐ Map to response format
+    const result = topMovies.map((movie) => {
+      const ratingData = ratingsMap.get(movie.id);
 
       return {
         id: movie.id,
@@ -479,9 +413,9 @@ export const getTopRatedMovies = async (limit: number = 10) => {
         year: movie.year,
         duration: movie.duration,
         trailer_url: movie.trailer_url,
-        avgRating: Number(avgRating.toFixed(1)),
-        finalScore: Number((movie.final_score || 0).toFixed(2)),
-        ratingsCount: ratings.length,
+        avgRating: ratingData ? Number(ratingData.rating.toFixed(1)) : 0,       // From movies_cleaned
+        ratingsCount: ratingData ? ratingData.rating_count : 0,                 // From movies_cleaned
+        finalScore: movie.final_score ? Number(movie.final_score.toFixed(2)) : 0, // ⭐ From movies table
         genres: movie.movie_genres.map((mg) => ({
           id: mg.genres.id,
           name: mg.genres.name,
@@ -494,10 +428,257 @@ export const getTopRatedMovies = async (limit: number = 10) => {
       };
     });
 
-    console.log(`✅ Returning top ${topRated.length} movies by final_score`);
-    return topRated;
+    console.log(`✅ Returning ${result.length} top movies`);
+    if (result.length > 0) {
+      console.log(`📊 #1: ${result[0].title} (Final Score: ${result[0].finalScore}, Rating: ${result[0].avgRating})`);
+    }
+
+    return result;
   } catch (error) {
     console.error("❌ Error in getTopRatedMovies:", error);
+    throw error;
+  }
+};
+
+/**
+ * Đánh giá phim và thêm comment
+ */
+export const rateMovie = async (data: {
+  userId: number;
+  movieId: number;
+  rating: number; // 1-10
+  comment?: string;
+}) => {
+  try {
+    console.log(`⭐ Rating movie ${data.movieId} by user ${data.userId}`);
+    console.log(`   Rating: ${data.rating}/10`);
+    console.log(`   Comment: ${data.comment || 'No comment'}`);
+
+    // Validate rating
+    if (data.rating < 1 || data.rating > 10) {
+      throw new Error("Rating must be between 1 and 10");
+    }
+
+    // ⭐ Verify user exists
+    const user = await prisma.users.findUnique({
+      where: { id: data.userId },
+    });
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // ⭐ Verify movie exists
+    const movie = await prisma.movies.findUnique({
+      where: { id: data.movieId },
+    });
+
+    if (!movie) {
+      throw new Error("Movie not found");
+    }
+
+    // Check if user already rated
+    const existing = await prisma.users_data.findUnique({
+      where: {
+        movie_id_user_id: {
+          movie_id: data.movieId,
+          user_id: data.userId,
+        },
+      },
+    });
+
+    if (existing) {
+      // Update existing rating
+      const updated = await prisma.users_data.update({
+        where: {
+          movie_id_user_id: {
+            movie_id: data.movieId,
+            user_id: data.userId,
+          },
+        },
+        data: {
+          user_rate: data.rating,
+          comments: data.comment || null,
+        },
+      });
+
+      console.log(`✅ Updated rating for movie ${data.movieId}`);
+      return updated;
+    } else {
+      // Create new rating
+      const created = await prisma.users_data.create({
+        data: {
+          user_id: data.userId,
+          movie_id: data.movieId,
+          user_rate: data.rating,
+          comments: data.comment || null,
+          liked: false,
+        },
+      });
+
+      console.log(`✅ Created new rating for movie ${data.movieId}`);
+      return created;
+    }
+  } catch (error: any) {
+    console.error("❌ Error in rateMovie:", error);
+    console.error("   Error code:", error.code); // Prisma error code
+    console.error("   Error meta:", error.meta); // Additional info
+    throw error;
+  }
+};
+
+/**
+ * Lấy tất cả ratings và comments của một phim
+ */
+export const getMovieRatings = async (movieId: number) => {
+  try {
+    console.log(`📋 Getting ratings for movie ${movieId}`);
+
+    const ratings = await prisma.users_data.findMany({
+      where: {
+        movie_id: movieId,
+        user_rate: {
+          not: null,
+        },
+      },
+      include: {
+        users: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        movie_id: 'desc', // Latest first
+      },
+    });
+
+    console.log(`✅ Found ${ratings.length} ratings for movie ${movieId}`);
+
+    return ratings.map((r) => ({
+      id: `${r.movie_id}_${r.user_id}`, // Composite ID
+      userId: r.user_id,
+      userName: r.users.name,
+      rating: r.user_rate || 0,
+      comment: r.comments,
+      createdAt: new Date(), // users_data doesn't have timestamp, use current
+    }));
+  } catch (error: any) {
+    console.error("❌ Error in getMovieRatings:", error);
+    throw error;
+  }
+};
+
+/**
+ * Lấy rating của user cho một phim cụ thể
+ */
+export const getUserRatingForMovie = async (userId: number, movieId: number) => {
+  try {
+    const rating = await prisma.users_data.findUnique({
+      where: {
+        movie_id_user_id: {
+          movie_id: movieId,
+          user_id: userId,
+        },
+      },
+    });
+
+    if (!rating || !rating.user_rate) {
+      return null;
+    }
+
+    return {
+      rating: rating.user_rate,
+      comment: rating.comments,
+    };
+  } catch (error: any) {
+    console.error("❌ Error in getUserRatingForMovie:", error);
+    throw error;
+  }
+};
+
+/**
+ * Xóa rating/comment của user
+ */
+export const deleteRating = async (userId: number, movieId: number) => {
+  try {
+    console.log(`🗑️ Deleting rating for movie ${movieId} by user ${userId}`);
+
+    const existing = await prisma.users_data.findUnique({
+      where: {
+        movie_id_user_id: {
+          movie_id: movieId,
+          user_id: userId,
+        },
+      },
+    });
+
+    if (!existing) {
+      throw new Error("Rating not found");
+    }
+
+    // If user also liked the movie, just remove rating/comment, keep liked
+    if (existing.liked) {
+      await prisma.users_data.update({
+        where: {
+          movie_id_user_id: {
+            movie_id: movieId,
+            user_id: userId,
+          },
+        },
+        data: {
+          user_rate: null,
+          comments: null,
+        },
+      });
+      console.log(`✅ Removed rating but kept liked status`);
+    } else {
+      // If not liked, delete entire record
+      await prisma.users_data.delete({
+        where: {
+          movie_id_user_id: {
+            movie_id: movieId,
+            user_id: userId,
+          },
+        },
+      });
+      console.log(`✅ Deleted rating record`);
+    }
+
+    return true;
+  } catch (error: any) {
+    console.error("❌ Error in deleteRating:", error);
+    throw error;
+  }
+};
+
+/**
+ * ⭐ Lấy tất cả genres với số lượng phim
+ */
+export const getAllGenres = async () => {
+  try {
+    const genres = await prisma.genres.findMany({
+      orderBy: {
+        name: "asc",
+      },
+      include: {
+        _count: {
+          select: {
+            movie_genres: true,
+          },
+        },
+      },
+    });
+
+    // Map to include moviesCount
+    return genres.map((genre) => ({
+      id: genre.id,
+      name: genre.name,
+      moviesCount: genre._count.movie_genres,
+    }));
+  } catch (error) {
+    console.error("❌ Error in getAllGenres:", error);
     throw error;
   }
 };

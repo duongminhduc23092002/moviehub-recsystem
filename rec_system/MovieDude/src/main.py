@@ -1,4 +1,10 @@
 import sys
+import io
+
+# ⭐ FIX: Set UTF-8 encoding for stdout/stderr on Windows
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 try:
     from scripts.login import login
     from modules import *
@@ -13,25 +19,57 @@ sep_line = "[cyan]-[/cyan]" * 50
 def main():
     # ⭐ Check if called from Node.js with args
     if len(sys.argv) >= 3:
-        user_email = sys.argv[1]
-        mode = sys.argv[2]
+        user_id_str = sys.argv[1]
+        limit_str = sys.argv[2]
+        filter_watched_str = sys.argv[3] if len(sys.argv) > 3 else "false"
+        debug_mode = sys.argv[4] if len(sys.argv) > 4 else "false"  # ⭐ NEW: debug flag
         
-        console.print(f"[green]Running recommendation for: {user_email}[/green]")
+        try:
+            user_id = int(user_id_str)
+            limit = int(limit_str)
+        except ValueError as e:
+            print(f"Error: Invalid parameters: {e}", file=sys.stderr)
+            return
         
-        if mode == "1":
-            # Discover based on user activities
+        filter_watched = filter_watched_str.lower() == "true"
+        
+        try:
+            recommendation_input = find_user_interests(user_id)
+            
+            if not recommendation_input:
+                print("Error: No user interests found", file=sys.stderr)
+                return
+            
+            # ⭐ NEW: Print debug info if debug mode enabled
+            if debug_mode.lower() == "true":
+                genres, keywords = recommendation_input
+                print(f"DEBUG:USER_GENRES:{','.join(genres)}", file=sys.stderr)
+                print(f"DEBUG:USER_KEYWORDS:{','.join(keywords)}", file=sys.stderr)
+            
+            # Get recommendations
             rec = movie_recommender(
-                user_email, 
-                find_user_interests(user_email),
-                filter_watched=False,
-                filter_top_rank=False
+                user_id, 
+                recommendation_input,
+                filter_watched=filter_watched,
+                filter_top_rank=True
             )
-            print_titles(rec)
-        else:
-            console.print("[red]Invalid mode[/red]")
+            
+            limited_rec = rec[:limit]
+            
+            # ⭐ FIX: Print titles with proper encoding handling
+            for title in limited_rec:
+                try:
+                    print(title)
+                except UnicodeEncodeError:
+                    # Fallback: replace problematic characters
+                    print(title.encode('ascii', errors='replace').decode('ascii'))
+                
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+        
         return
     
-    # ⭐ Original interactive mode
+    # ⭐ Original interactive mode (when run directly)
     user_id = login()
     filter_watched = False
     filter_top_rank = False
@@ -65,10 +103,10 @@ def main():
             console.print("[red]❌ Invalid choice. Please try again.[/red]")
 
 def print_titles(recommend_titles):
-    # Use plain print() instead of console.print() for Node.js compatibility
-    print("\nTop 10 Recommended Similar Movies:")
+    # Use console.print for interactive mode
+    console.print("\n[bold cyan]Top 10 Recommended Similar Movies:[/bold cyan]")
     for i, title in enumerate(recommend_titles, 1):
-        print(f"{i}. {title}")
+        console.print(f"[yellow]{i}.[/yellow] {title}")
 
 if __name__ == "__main__":
     main()

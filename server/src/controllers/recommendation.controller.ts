@@ -22,13 +22,8 @@ export const getRecommendations = async (req: AuthRequest, res: Response) => {
 
     console.log(`🔄 Fetching recommendations for user ${userId}...`);
 
-    // Get recommended movie titles from Python
-    const recommendedTitles = await recommendationService.getRecommendedMovies(userId);
-
-    console.log(`✅ Python returned ${recommendedTitles.length} movie titles`);
-
-    // Fetch full movie data from database
-    const movies = await recommendationService.getMoviesByTitles(recommendedTitles);
+    // ⭐ FIX: getRecommendedMovies already returns FULL movie objects
+    const movies = await recommendationService.getRecommendedMovies(userId);
 
     console.log(`✅ Found ${movies.length} movies in database`);
 

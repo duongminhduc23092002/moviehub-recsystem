@@ -1,15 +1,13 @@
 import { Router } from "express";
-import * as watchlistController from "../controllers/watchlist.controller.js";
-import { requireAuth } from "../middlewares/auth.middleware.js";
+import * as watchlistController from "../controllers/watchlist.controller.js"; // ⭐ Add .js extension
+import { requireAuth } from "../middlewares/auth.middleware.js"; // ⭐ Fix: middlewares (plural) và .js extension
 
 const router = Router();
 
-// All routes require authentication
-router.use(requireAuth);
-
-router.get("/", watchlistController.getWatchlist);
-router.post("/:movieId", watchlistController.addToWatchlist);
-router.delete("/:movieId", watchlistController.removeFromWatchlist);
-router.get("/:movieId/check", watchlistController.checkInWatchlist);
+router.get("/", requireAuth, watchlistController.getWatchlist);
+router.get("/rated", requireAuth, watchlistController.getRatedMovies); // ⭐ NEW
+router.post("/:movieId", requireAuth, watchlistController.addToWatchlist);
+router.delete("/:movieId", requireAuth, watchlistController.removeFromWatchlist);
+router.get("/:movieId/check", requireAuth, watchlistController.checkInWatchlist);
 
 export default router;

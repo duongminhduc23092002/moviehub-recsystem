@@ -13,7 +13,6 @@ interface Movie {
 
 interface UserStats {
   watchlistCount: number;
-  ratingsCount: number;
   favoriteGenre: string;
   joinedDays: number;
 }
@@ -46,7 +45,6 @@ export default function Profile() {
   // User Stats
   const [stats, setStats] = useState<UserStats>({
     watchlistCount: 0,
-    ratingsCount: 0,
     favoriteGenre: "Chưa có",
     joinedDays: 0,
   });
@@ -77,7 +75,6 @@ export default function Profile() {
       
       setStats({
         watchlistCount: watchlistMovies.length,
-        ratingsCount: 0, // TODO: Add from backend
         favoriteGenre: "Chưa có", // TODO: Calculate from watchlist
         joinedDays: daysSinceJoined,
       });
@@ -265,16 +262,6 @@ export default function Profile() {
                     <span className="text-sm text-netflix-light">Watchlist</span>
                   </div>
                   <span className="text-white font-bold">{stats.watchlistCount}</span>
-                </div>
-
-                <div className="flex items-center justify-between p-3 bg-netflix-dark/50 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <svg className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.462a1 1 0 00.951-.69l1.07-3.292z" />
-                    </svg>
-                    <span className="text-sm text-netflix-light">Đánh giá</span>
-                  </div>
-                  <span className="text-white font-bold">{stats.ratingsCount}</span>
                 </div>
 
                 <div className="flex items-center justify-between p-3 bg-netflix-dark/50 rounded-lg">
@@ -475,7 +462,7 @@ export default function Profile() {
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                                d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
                         Đổi mật khẩu
                       </button>

@@ -12,7 +12,8 @@ interface User {
   email: string;
   role: "user" | "admin";
   created_at: string;
-  ratingsCount: number;
+  // ❌ DELETE: Xóa ratingsCount
+  // ratingsCount: number;
 }
 
 export default function AdminUsers() {
@@ -75,24 +76,8 @@ export default function AdminUsers() {
 
   const columns = [
     { key: "id", label: "ID" },
-    {
-      key: "name",
-      label: "Họ tên",
-      render: (value: string, row: User) => (
-        <div className="flex items-center gap-3">
-          <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm
-                        ${row.role === "admin" 
-                          ? "bg-gradient-to-br from-yellow-500 to-orange-500"
-                          : "bg-gradient-to-br from-netflix-red to-red-700"}`}>
-            {value.charAt(0).toUpperCase()}
-          </div>
-          <div>
-            <p className="font-medium text-white">{value}</p>
-            <p className="text-xs text-netflix-light">{row.email}</p>
-          </div>
-        </div>
-      ),
-    },
+    { key: "name", label: "Tên" },
+    { key: "email", label: "Email" },
     {
       key: "role",
       label: "Quyền",
@@ -114,13 +99,6 @@ export default function AdminUsers() {
           <option value="user">User</option>
           <option value="admin">Admin</option>
         </select>
-      ),
-    },
-    {
-      key: "ratingsCount",
-      label: "Đánh giá",
-      render: (value: number) => (
-        <span className="px-2 py-1 bg-netflix-gray rounded-full text-xs">{value} đánh giá</span>
       ),
     },
     {

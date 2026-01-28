@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
-import * as moviesService from "../services/movies.service.js";
 import { AuthRequest } from "../middlewares/auth.middleware.js";
-import prisma from "../prisma/client.js";
+import * as moviesService from "../services/movies.service.js";
+import prisma from "../prisma/client.js"; // ⭐ ADD THIS
 
 export const getAll = async (req: Request, res: Response) => {
   try {
@@ -52,86 +52,6 @@ export const getById = async (req: Request, res: Response) => {
   }
 };
 
-export const getRatings = async (req: Request, res: Response) => {
-  try {
-    const ratings = await moviesService.getRatings(Number(req.params.id));
-    res.json({
-      success: true,
-      data: ratings,
-    });
-  } catch (err: any) {
-    console.error('Error in getRatings:', err);
-    res.status(500).json({ 
-      success: false,
-      message: err.message 
-    });
-  }
-};
-
-// ⭐ Fix: Use AuthRequest type and check req.userId or req.user
-export const rateMovie = async (req: AuthRequest, res: Response) => {
-  try {
-    // ⭐ Try both req.userId and req.user.id
-    const userId = req.userId || req.user?.id;
-
-    console.log("🎬 Rate movie request:", {
-      userId,
-      movieId: req.params.id,
-      body: req.body,
-      headers: req.headers.authorization ? "present" : "missing",
-    });
-
-    if (!userId) {
-      console.error("❌ No user ID found in request");
-      return res.status(401).json({ 
-        success: false,
-        message: "Unauthorized - User ID not found" 
-      });
-    }
-
-    const movieId = Number(req.params.id);
-    const { score, comment } = req.body;
-
-    // ⭐ Validate inputs
-    if (isNaN(movieId) || movieId <= 0) {
-      return res.status(400).json({ 
-        success: false,
-        message: "Invalid movie ID" 
-      });
-    }
-
-    if (!score || score < 1 || score > 5) {
-      return res.status(400).json({ 
-        success: false,
-        message: "Score must be between 1 and 5" 
-      });
-    }
-
-    const rating = await moviesService.rateMovie({
-      userId,
-      movieId,
-      score: Number(score),
-      comment: comment?.trim(),
-    });
-
-    console.log("✅ Rating created/updated successfully");
-
-    res.json({
-      success: true,
-      data: rating,
-      message: "Movie rated successfully",
-    });
-  } catch (err: any) {
-    console.error('❌ Error in rateMovie:', err);
-    res.status(500).json({ 
-      success: false,
-      message: err.message 
-    });
-  }
-};
-
-// ...existing code...
-
 export const getTopRated = async (req: Request, res: Response) => {
   try {
     const limit = Math.min(50, Number(req.query.limit || 10));
@@ -155,6 +75,7 @@ export const getTopRated = async (req: Request, res: Response) => {
   }
 };
 
+// ⭐ FIX: getGenres - Now uses prisma (imported above)
 export const getGenres = async (req: Request, res: Response) => {
   try {
     const genres = await prisma.genres.findMany({
@@ -169,6 +90,146 @@ export const getGenres = async (req: Request, res: Response) => {
     res.status(500).json({ 
       success: false,
       message: err.message 
+    });
+  }
+};
+
+/**
+ * Rate a movie (POST /api/movies/:id/rate)
+ */
+export const rateMovie = async (req: AuthRequest, res: Response) => {
+  try {
+    const movieId = parseInt(req.params.id);
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { rating, comment } = req.body;
+
+    console.log(`📥 POST /api/movies/${movieId}/rate - User ${userId}`);
+    console.log(`   Rating: ${rating}/10`);
+    console.log(`   Comment: ${comment || 'No comment'}`);
+
+    if (!rating || rating < 1 || rating > 10) {
+      return res.status(400).json({
+        success: false,
+        message: "Rating must be between 1 and 10",
+      });
+    }
+
+    const result = await moviesService.rateMovie({
+      userId,
+      movieId,
+      rating,
+      comment,
+    });
+
+    res.json({
+      success: true,
+      data: result,
+      message: "Rating submitted successfully",
+    });
+  } catch (err: any) {
+    console.error("❌ Error in rateMovie:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to rate movie",
+    });
+  }
+};
+
+/**
+ * Get all ratings for a movie (GET /api/movies/:id/ratings)
+ */
+export const getMovieRatings = async (req: Request, res: Response) => {
+  try {
+    const movieId = parseInt(req.params.id);
+
+    console.log(`📥 GET /api/movies/${movieId}/ratings`);
+
+    const ratings = await moviesService.getMovieRatings(movieId);
+
+    res.json({
+      success: true,
+      data: ratings,
+      meta: {
+        total: ratings.length,
+      },
+    });
+  } catch (err: any) {
+    console.error("❌ Error in getMovieRatings:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to get ratings",
+    });
+  }
+};
+
+/**
+ * Get user's rating for a movie (GET /api/movies/:id/my-rating)
+ */
+export const getMyRating = async (req: AuthRequest, res: Response) => {
+  try {
+    const movieId = parseInt(req.params.id);
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    console.log(`📥 GET /api/movies/${movieId}/my-rating - User ${userId}`);
+
+    const rating = await moviesService.getUserRatingForMovie(userId, movieId);
+
+    res.json({
+      success: true,
+      data: rating,
+    });
+  } catch (err: any) {
+    console.error("❌ Error in getMyRating:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to get rating",
+    });
+  }
+};
+
+/**
+ * Delete user's rating (DELETE /api/movies/:id/rate)
+ */
+export const deleteRating = async (req: AuthRequest, res: Response) => {
+  try {
+    const movieId = parseInt(req.params.id);
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    console.log(`📥 DELETE /api/movies/${movieId}/rate - User ${userId}`);
+
+    await moviesService.deleteRating(userId, movieId);
+
+    res.json({
+      success: true,
+      message: "Rating deleted successfully",
+    });
+  } catch (err: any) {
+    console.error("❌ Error in deleteRating:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to delete rating",
     });
   }
 };

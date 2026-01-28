@@ -18,7 +18,7 @@ interface QueryParams {
 }
 
 export const getAll = async (query: QueryParams) => {
-  console.log("🔍 Admin getAll movies called with query:", query); // Debug log
+  console.log("🔍 Admin getAll movies called with query:", query);
 
   const page = Math.max(1, Number(query.page || 1));
   const limit = Math.min(100, Number(query.limit || 10));
@@ -43,22 +43,37 @@ export const getAll = async (query: QueryParams) => {
         include: {
           movie_genres: { include: { genres: true } },
           movie_casts: { include: { people: true } },
-          ratings: {
-            select: { score: true }
-          },
+          // ❌ REMOVE: ratings include
         },
       }),
       prisma.movies.count({ where }),
     ]);
 
-    console.log(`✅ Found ${movies.length} movies out of ${total} total`); // Debug log
+    console.log(`✅ Found ${movies.length} movies out of ${total} total`);
 
-    // Map to proper format
+    // ⭐ Get ratings from movies_cleaned
+    const movieIds = movies.map(m => m.id);
+    let ratingsMap = new Map<number, { rating: number; rating_count: number }>();
+
+    if (movieIds.length > 0) {
+      const movieRatingsData = await prisma.$queryRawUnsafe<any[]>(
+        `SELECT movie_id, rating, rating_count 
+         FROM movies_cleaned 
+         WHERE movie_id IN (${movieIds.join(',')})`
+      );
+
+      movieRatingsData.forEach(row => {
+        ratingsMap.set(row.movie_id, {
+          rating: row.rating || 0,
+          rating_count: row.rating_count || 0,
+        });
+      });
+    }
+
+    // Map to proper format with ratings from movies_cleaned
     const data = movies.map((m) => {
-      const ratings = m.ratings || [];
-      const avgRating = ratings.length > 0
-        ? ratings.reduce((sum, r) => sum + r.score, 0) / ratings.length
-        : 0;
+      const ratingData = ratingsMap.get(m.id);
+      const avgRating = ratingData?.rating || 0;
 
       return {
         id: m.id,
@@ -68,7 +83,7 @@ export const getAll = async (query: QueryParams) => {
         year: m.year,
         duration: m.duration,
         trailer_url: m.trailer_url,
-        avgRating: Number(avgRating.toFixed(1)),
+        avgRating: Number(avgRating.toFixed(1)), // ⭐ From movies_cleaned
         genres: m.movie_genres.map((mg) => ({
           id: mg.genres.id,
           name: mg.genres.name,
@@ -199,23 +214,23 @@ export const remove = async (id: number) => {
   try {
     // Delete related data first
     await prisma.$transaction(async (tx) => {
-      // Delete ratings
-      await tx.ratings.deleteMany({ where: { movie_id: id } });
-      
-      // Delete watchlist entries
-      await tx.watchlist.deleteMany({ where: { movie_id: id } });
-      
-      // Delete genres relationship
+      // ❌ REMOVE: Delete ratings (table doesn't exist)
+      // await tx.ratings.deleteMany({ where: { movie_id: id } });
+
+      // Delete movie_genres
       await tx.movie_genres.deleteMany({ where: { movie_id: id } });
-      
-      // Delete casts relationship
+
+      // Delete movie_casts
       await tx.movie_casts.deleteMany({ where: { movie_id: id } });
-      
-      // Delete movie
+
+      // Delete users_data
+      await tx.users_data.deleteMany({ where: { movie_id: id } });
+
+      // Finally delete movie
       await tx.movies.delete({ where: { id } });
     });
 
-    console.log("✅ Movie deleted:", id); // Debug log
+    console.log("✅ Movie deleted:", id);
     return true;
   } catch (error) {
     console.error("❌ Error in admin remove movie:", error);

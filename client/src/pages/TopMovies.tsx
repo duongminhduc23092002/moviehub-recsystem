@@ -56,7 +56,7 @@ export default function TopMovies() {
 
 
   return (
-    <div className="min-h-screen bg-netflix-black">
+    <div className="min-h-screen bg-netflix-black pt-20 pb-12">
       {/* Hero Section */}
       <div className="relative bg-gradient-to-b from-netflix-dark to-netflix-black pt-24 pb-16">
         {/* ...existing code... */}
@@ -109,7 +109,7 @@ export default function TopMovies() {
                                 flex items-center justify-center">
                     <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                            d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+                            d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4" />
                     </svg>
                   </div>
                   <div>
@@ -121,7 +121,17 @@ export default function TopMovies() {
             </div>
 
             {/* View Mode Toggle */}
-            {/* ...existing code... */}
+            <button
+              className="flex items-center gap-2 text-sm border border-white/10 rounded-full
+                        hover:border-netflix-red/50 transition-all duration-500"
+              onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
+            >
+              {viewMode === 'list' ? (
+                <span>Grid View</span>
+              ) : (
+                <span>List View</span>
+              )}
+            </button>
           </div>
         </div>
       </div>
@@ -156,212 +166,8 @@ export default function TopMovies() {
               Khám phá phim
             </Link>
           </div>
-        ) : viewMode === 'list' ? (
-          // List View
-          <div className="space-y-6">
-            {movies.map((movie, index) => (
-              <div
-                key={movie.id}
-                className="group relative overflow-hidden rounded-2xl bg-netflix-dark border border-white/10
-                         hover:border-netflix-red/50 transition-all duration-500
-                         hover:shadow-2xl hover:shadow-netflix-red/20 animate-fade-in"
-                style={{ animationDelay: `${index * 100}ms` }}
-              >
-                <div className="flex flex-col md:flex-row gap-6 p-6">
-                  {/* Rank Badge */}
-                  <div className="absolute top-0 left-0 z-10">
-                    <div className={`relative w-20 h-20 bg-gradient-to-br ${getMedalColor(index + 1)} 
-                                  rounded-br-3xl flex items-center justify-center shadow-2xl`}>
-                      <div className="text-center">
-                        <div className="text-3xl font-black text-white">
-                          #{index + 1}
-                        </div>
-                        {getMedalIcon(index + 1) && (
-                          <div className="text-2xl absolute -top-2 -right-2">
-                            {getMedalIcon(index + 1)}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Poster */}
-                  <Link 
-                    to={`/movies/${movie.id}`}
-                    className="relative flex-shrink-0 w-full md:w-48 h-72 rounded-xl overflow-hidden 
-                             border-2 border-transparent group-hover:border-netflix-red 
-                             transition-all duration-500 md:ml-10"
-                  >
-                    {movie.poster ? (
-                      <img
-                        src={movie.poster}
-                        alt={movie.title}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-netflix-gray flex items-center justify-center">
-                        <svg className="w-16 h-16 text-netflix-light" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                                d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4" />
-                        </svg>
-                      </div>
-                    )}
-
-                    {/* Play Overlay */}
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 
-                                  transition-opacity duration-300 flex items-center justify-center">
-                      <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center
-                                    transform scale-75 group-hover:scale-100 transition-transform duration-300">
-                        <svg className="w-8 h-8 text-white ml-1" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                    </div>
-                  </Link>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <Link to={`/movies/${movie.id}`}>
-                      <h3 className="text-2xl md:text-3xl font-bold text-white mb-3 
-                                   group-hover:text-netflix-red transition-colors duration-300">
-                        {movie.title}
-                      </h3>
-                    </Link>
-
-                    {/* Meta Info */}
-                    <div className="flex flex-wrap items-center gap-4 mb-4">
-                      {/* Final Score - Primary */}
-                      <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 
-                                    rounded-xl border-2 border-yellow-500/40">
-                        <svg className="w-6 h-6 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                        </svg>
-                        <div className="flex flex-col">
-                          <span className="text-xs text-yellow-400 font-medium">Final Score</span>
-                          <span className="text-white font-black text-xl">{movie.finalScore}</span>
-                        </div>
-                      </div>
-
-                      {/* Average Rating */}
-                      <div className="flex items-center gap-2 px-3 py-1.5 bg-yellow-500/20 rounded-full 
-                                    border border-yellow-500/30">
-                        <svg className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                        </svg>
-                        <span className="text-white font-bold text-lg">{movie.avgRating.toFixed(1)}</span>
-                        <span className="text-yellow-400 text-sm">/ 5.0</span>
-                      </div>
-
-                      {/* Ratings Count */}
-                      <div className="flex items-center gap-1.5 text-netflix-light">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" />
-                        </svg>
-                        <span className="text-sm">{movie.ratingsCount} đánh giá</span>
-                      </div>
-
-                      {/* Year */}
-                      {movie.year && (
-                        <div className="flex items-center gap-1.5 text-netflix-light">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          <span className="text-sm">{movie.year}</span>
-                        </div>
-                      )}
-
-                      {/* Duration */}
-                      {movie.duration && (
-                        <div className="flex items-center gap-1.5 text-netflix-light">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <span className="text-sm">{movie.duration} phút</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Genres */}
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      {movie.genres.slice(0, 4).map((genre) => (
-                        <span
-                          key={genre.id}
-                          className="px-3 py-1 bg-netflix-red/20 text-netflix-red text-xs font-medium 
-                                   rounded-full border border-netflix-red/30 hover:bg-netflix-red/30 
-                                   transition-colors cursor-pointer"
-                        >
-                          {genre.name}
-                        </span>
-                      ))}
-                      {movie.genres.length > 4 && (
-                        <span className="px-3 py-1 bg-white/10 text-netflix-light text-xs rounded-full">
-                          +{movie.genres.length - 4}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Description */}
-                    <p className="text-netflix-light leading-relaxed line-clamp-2 mb-4">
-                      {movie.description || "Chưa có mô tả"}
-                    </p>
-
-                    {/* Casts */}
-                    {movie.casts.length > 0 && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <svg className="w-4 h-4 text-netflix-light flex-shrink-0" fill="none" 
-                             stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                        </svg>
-                        <span className="text-netflix-light line-clamp-1">
-                          {movie.casts.slice(0, 3).map(c => c.name).join(", ")}
-                          {movie.casts.length > 3 && ` +${movie.casts.length - 3}`}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Actions */}
-                    <div className="flex flex-wrap gap-3 mt-4">
-                      <Link
-                        to={`/movies/${movie.id}`}
-                        className="btn-primary flex items-center gap-2 text-sm"
-                      >
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                        </svg>
-                        Xem chi tiết
-                      </Link>
-
-                      <button className="btn-secondary flex items-center gap-2 text-sm">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                        </svg>
-                        Yêu thích
-                      </button>
-
-                      <button className="btn-secondary flex items-center gap-2 text-sm">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                        </svg>
-                        Chia sẻ
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Hover Effect Border */}
-                <div className="absolute inset-0 border-2 border-netflix-red rounded-2xl opacity-0 
-                              group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-              </div>
-            ))}
-          </div>
-        ) : (
-          // Grid View - tương tự list view nhưng layout grid
+        ) : viewMode === 'grid' ? (
+          // Grid View
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
             {movies.map((movie, index) => (
               <Link
@@ -450,6 +256,143 @@ export default function TopMovies() {
                         </button>
                       </div>
                     </div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          // List View
+          <div className="space-y-6">
+            {movies.map((movie, index) => (
+              <Link
+                key={movie.id}
+                to={`/movies/${movie.id}`}
+                className="glass-card p-4 md:p-6 flex gap-4 md:gap-6 hover:scale-[1.02] 
+                 transition-transform duration-300 group animate-slide-up"
+                style={{ animationDelay: `${index * 50}ms` }}
+              >
+                {/* Rank Badge */}
+                <div className="flex-shrink-0 relative">
+                  <div className={`w-16 h-16 md:w-20 md:h-20 bg-gradient-to-br ${getMedalColor(index + 1)} 
+                        rounded-full flex items-center justify-center shadow-xl 
+                        border-4 border-netflix-black relative z-10`}>
+                    <span className="text-white font-black text-2xl md:text-3xl">#{index + 1}</span>
+                  </div>
+                  {getMedalIcon(index + 1) && (
+                    <span className="absolute -top-2 -right-2 text-3xl z-20">
+                      {getMedalIcon(index + 1)}
+                    </span>
+                  )}
+                </div>
+
+                {/* Movie Poster */}
+                <div className="w-24 md:w-32 h-36 md:h-48 flex-shrink-0 rounded-xl overflow-hidden bg-netflix-gray">
+                  {movie.poster ? (
+                    <img
+                      src={movie.poster}
+                      alt={movie.title}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <svg className="w-12 h-12 text-netflix-light" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                              d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+
+                {/* Movie Info */}
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-2xl md:text-3xl font-bold text-white mb-3 group-hover:text-netflix-red 
+                       transition-colors line-clamp-2">
+                    {movie.title}
+                  </h3>
+
+                  {/* Ratings */}
+                  <div className="flex flex-wrap items-center gap-4 mb-4">
+                    {/* Final Score */}
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 
+                          border border-yellow-500/30 rounded-lg">
+                      <svg className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                      </svg>
+                      <span className="text-yellow-400 text-lg font-bold">{movie.finalScore}</span>
+                      <span className="text-netflix-light text-sm">Final Score</span>
+                    </div>
+
+                    {/* Average Rating */}
+                    <div className="flex items-center gap-1.5 text-netflix-light">
+                      <svg className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                      </svg>
+                      <span className="text-white font-semibold">{movie.avgRating.toFixed(1)}</span>
+                      <span className="text-sm">/ 10</span>
+                    </div>
+
+                    {/* Ratings Count */}
+                    <span className="text-netflix-light text-sm">
+                      ({movie.ratingsCount.toLocaleString()} đánh giá)
+                    </span>
+                  </div>
+
+                  {/* Meta Info */}
+                  <div className="flex flex-wrap items-center gap-3 text-sm text-netflix-light mb-4">
+                    {movie.year && <span>{movie.year}</span>}
+                    {movie.duration && (
+                      <>
+                        <span>•</span>
+                        <span>{movie.duration} phút</span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Genres */}
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {movie.genres.slice(0, 4).map((genre) => (
+                      <span
+                        key={genre.id}
+                        className="px-3 py-1 bg-netflix-red/20 text-netflix-red text-sm rounded-full 
+                         border border-netflix-red/30"
+                      >
+                        {genre.name}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Description */}
+                  {movie.description && (
+                    <p className="text-netflix-light text-sm line-clamp-2 mb-4">
+                      {movie.description}
+                    </p>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-3">
+                    <button className="flex-1 bg-white text-netflix-black py-2.5 px-6 rounded-lg 
+                             font-semibold hover:bg-white/90 transition-colors
+                             flex items-center justify-center gap-2">
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                      </svg>
+                      Xem chi tiết
+                    </button>
+                    <button className="p-2.5 bg-netflix-gray/80 text-white rounded-lg 
+                             hover:bg-white/20 transition-colors">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                              d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                      </svg>
+                    </button>
+                    <button className="p-2.5 bg-netflix-gray/80 text-white rounded-lg 
+                             hover:bg-white/20 transition-colors">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                              d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
               </Link>

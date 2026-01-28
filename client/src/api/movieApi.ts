@@ -15,11 +15,10 @@ api.interceptors.request.use((config) => {
   
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
-    console.log("🔑 Token attached to request:", token.substring(0, 20) + "..."); // Debug log
+    console.log("✅ Token attached to request"); // Debug
   } else {
-    console.warn("⚠️ No token found in localStorage");
+    console.error("❌ No token found!");
   }
-  
   return config;
 });
 
@@ -38,11 +37,12 @@ export const getMovies = async (params?: {
   page?: number;
   limit?: number;
   search?: string;
-  genre?: string;
-  sort?: string; // ⭐ Add this
+  genre?: string; // ⭐ ADD genre param
+  sort?: string;
 }) => {
-  console.log("🔍 getMovies called with params:", params); // Debug log
+  console.log("📡 API call to /movies with params:", params);
   const res = await api.get("/movies", { params });
+  console.log("📬 API response:", res.data);
   return res.data;
 };
 
@@ -56,16 +56,25 @@ export const getTopRatedMovies = async (limit: number = 10) => {
   return res.data;
 };
 
-export const rateMovie = async (
-  movieId: number,
-  data: { score: number; comment?: string }
-) => {
-  const res = await api.post(`/movies/${movieId}/rate`, data);
+// ========== RATINGS API ==========
+
+export const rateMovie = async (movieId: number, rating: number, comment?: string) => {
+  const res = await api.post(`/movies/${movieId}/rate`, { rating, comment });
   return res.data;
 };
 
 export const getMovieRatings = async (movieId: number) => {
   const res = await api.get(`/movies/${movieId}/ratings`);
+  return res.data;
+};
+
+export const getMyRating = async (movieId: number) => {
+  const res = await api.get(`/movies/${movieId}/my-rating`);
+  return res.data;
+};
+
+export const deleteMyRating = async (movieId: number) => {
+  const res = await api.delete(`/movies/${movieId}/rate`);
   return res.data;
 };
 
@@ -81,6 +90,12 @@ export const getGenres = async () => {
 
 export const getWatchlist = async () => {
   const res = await api.get("/watchlist");
+  return res.data;
+};
+
+// ⭐ NEW: Get rated movies
+export const getRatedMovies = async () => {
+  const res = await api.get("/watchlist/rated");
   return res.data;
 };
 

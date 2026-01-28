@@ -9,19 +9,31 @@ const __dirname = path.dirname(__filename);
 
 export const getRecommendedMovies = async (userId: number) => {
   try {
-    console.log("🎬 Starting recommendation for user:", userId);
+    console.log("🎬 Starting recommendation for user ID:", userId);
 
-    // Get user email
-    const user = await prisma.users.findUnique({
-      where: { id: userId },
-      select: { email: true },
+    // Check if user has data
+    const userDataCount = await prisma.users_data.count({
+      where: { user_id: userId },
     });
 
-    if (!user) {
-      throw new Error(`User with ID ${userId} not found`);
+    console.log(`📊 User ${userId} has ${userDataCount} activities in users_data`);
+
+    if (userDataCount === 0) {
+      console.warn(`⚠️ User ${userId} has no data. Returning empty recommendations.`);
+      return [];
     }
 
-    console.log("✅ Found user:", user.email);
+    // Check if movies_sorted has data
+    const moviesSortedCount = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT COUNT(*) as count FROM movies_sorted`
+    );
+    const moviesCount = moviesSortedCount[0]?.count || 0;
+
+    console.log(`📊 movies_sorted has ${moviesCount} records`);
+
+    if (moviesCount === 0) {
+      throw new Error("movies_sorted table is empty. Please run sync first.");
+    }
 
     // Calculate Python script path
     const projectRoot = path.resolve(__dirname, "..", "..", "..");
@@ -31,124 +43,132 @@ export const getRecommendedMovies = async (userId: number) => {
     console.log("🐍 Python script path:", pythonScript);
     console.log("📁 Script exists:", fs.existsSync(pythonScript));
 
-    // Check if Python script exists
     if (!fs.existsSync(pythonScript)) {
       throw new Error(`Python script not found at: ${pythonScript}`);
     }
 
     console.log("🚀 Spawning Python process...");
+    
+    const recommendationLimit = "50"; // Number of recommendations to return
+    
     console.log("   Command: python");
-    console.log("   Args:", [pythonScript, user.email, "1"]);
+    console.log("   Args:", [pythonScript, userId.toString(), recommendationLimit, "true"]);
 
-    return new Promise<string[]>((resolve, reject) => {
-      const pythonProcess = spawn("python", [pythonScript, user.email, "1"]);
+    const pythonProcess = spawn("python", [
+      pythonScript,
+      userId.toString(),
+      recommendationLimit,
+      "true", // filter_watched
+      "true", // ⭐ CHANGE: disable debug mode (was "true")
+    ]);
 
-      let output = "";
-      let errorOutput = "";
-      let hasStarted = false;
+    let output = "";
+    let errorOutput = "";
+    
+    // ⭐ DECLARE variables here (before using them)
+    let userGenres: string[] = [];
+    let userKeywords: string[] = [];
 
-      pythonProcess.stdout.on("data", (data) => {
-        hasStarted = true;
-        const text = data.toString();
-        console.log("🐍 [STDOUT]:", text);
-        output += text;
+    pythonProcess.stdout.on("data", (data) => {
+      const chunk = data.toString();
+      console.log("🐍 Python stdout:", chunk.trim());
+      output += chunk;
+    });
+
+    pythonProcess.stderr.on("data", (data) => {
+      const chunk = data.toString();
+      
+      // ⭐ Split by newlines to handle multiple debug messages in one chunk
+      const lines = chunk.split(/\r?\n/);
+      
+      lines.forEach(line => {
+        const trimmed = line.trim();
+        
+        if (!trimmed) return;
+        
+        // ⭐ Parse debug info
+        if (trimmed.startsWith("DEBUG:USER_GENRES:")) {
+          const genresStr = trimmed.replace("DEBUG:USER_GENRES:", "").trim();
+          userGenres = genresStr ? genresStr.split(",").map(g => g.trim()) : [];
+          console.log("🎭 User's favorite genres:", userGenres);
+        } else if (trimmed.startsWith("DEBUG:USER_KEYWORDS:")) {
+          const keywordsStr = trimmed.replace("DEBUG:USER_KEYWORDS:", "").trim();
+          userKeywords = keywordsStr ? keywordsStr.split(",").map(k => k.trim()) : [];
+          console.log("🔑 User's favorite keywords:", userKeywords);
+        } else {
+          // Log warnings but don't print to console (avoid spam)
+          if (!trimmed.includes("UserWarning") && !trimmed.includes("pandas only supports")) {
+            console.error("🐍 Python stderr:", trimmed);
+          }
+        }
       });
+      
+      errorOutput += chunk;
+    });
 
-      pythonProcess.stderr.on("data", (data) => {
-        const text = data.toString();
-        console.error("🐍 [STDERR]:", text);
-        errorOutput += text;
+    return new Promise((resolve, reject) => {
+      pythonProcess.on("close", async (code) => {
+        console.log(`🐍 Python process exited with code ${code}`);
+
+        if (code !== 0) {
+          console.error("❌ Python error output:", errorOutput);
+          reject(new Error(`Python script failed with code ${code}: ${errorOutput}`));
+          return;
+        }
+
+        // Parse output
+        const lines = output.trim().split("\n");
+        console.log(`📋 Python returned ${lines.length} lines`);
+
+        // Extract movie titles (filter out ALL non-movie lines)
+        const movieTitles = lines
+          .filter((line) => {
+            const trimmed = line.trim();
+            
+            // Skip empty lines
+            if (!trimmed) return false;
+            
+            // Skip debug/error messages
+            if (trimmed.startsWith("Running recommendation")) return false;
+            if (trimmed.startsWith("Limit:")) return false;
+            if (trimmed.startsWith("Filter watched:")) return false;
+            if (trimmed.startsWith("Error:")) return false;
+            if (trimmed.includes("Working...")) return false;
+            if (trimmed.includes("✓")) return false;
+            if (trimmed.includes("✅")) return false;
+            if (trimmed.includes("❌")) return false;
+            if (trimmed.includes("📋")) return false;
+            if (trimmed.includes("Found")) return false;
+            
+            // Only lines that look like movie titles
+            return true;
+          })
+          .map((line) => line.trim());
+
+        console.log(`🎬 Extracted ${movieTitles.length} movie titles:`, movieTitles);
+
+        if (movieTitles.length === 0) {
+          console.warn("⚠️ No movie titles extracted from Python output");
+          console.warn("Full output:", output);
+          resolve([]);
+          return;
+        }
+
+        // Fetch movie details
+        try {
+          const movies = await getMoviesByTitles(movieTitles);
+          console.log(`✅ Returning ${movies.length} recommended movies`);
+          resolve(movies);
+        } catch (error: any) {
+          console.error("❌ Error fetching movies by titles:", error);
+          reject(error);
+        }
       });
 
       pythonProcess.on("error", (error) => {
         console.error("❌ Failed to start Python process:", error);
-        reject(new Error(`Failed to start Python: ${error.message}. Make sure Python is installed and in PATH.`));
+        reject(new Error(`Failed to start Python process: ${error.message}`));
       });
-
-      pythonProcess.on("close", (code) => {
-        console.log(`🐍 Python process exited with code: ${code}`);
-
-        if (!hasStarted) {
-          reject(new Error("Python process failed to start. Check if 'python' command is available."));
-          return;
-        }
-
-        if (code !== 0) {
-          console.error("❌ Python script failed with error:", errorOutput);
-          reject(new Error(`Python script exited with code ${code}: ${errorOutput || "Unknown error"}`));
-          return;
-        }
-
-        try {
-          console.log("📝 Parsing Python output...");
-          console.log("📄 Full output:", output);
-
-          const lines = output.split("\n");
-          const movieTitles: string[] = [];
-          
-          let isRecommendationSection = false;
-          for (const line of lines) {
-            // Remove ANSI color codes
-            const cleanLine = line.replace(/\x1b\[[0-9;]*m/g, '').trim();
-            
-            // Look for recommendation section marker
-            if (cleanLine.includes("Top 10 Recommended") || cleanLine.includes("Similar Movies")) {
-              isRecommendationSection = true;
-              console.log("✅ Found recommendation section:", cleanLine);
-              continue;
-            }
-            
-            // Parse numbered lines like "1. Movie Title" (more flexible regex)
-            if (isRecommendationSection) {
-              // Match lines starting with number followed by dot and space
-              const match = cleanLine.match(/^(\d+)\.\s+(.+)$/);
-              if (match && match[2]) {
-                const title = match[2].trim();
-                if (title) {
-                  movieTitles.push(title);
-                  console.log(`   ✓ Extracted: "${title}"`);
-                }
-              }
-            }
-          }
-
-          console.log(`✅ Extracted ${movieTitles.length} movie titles:`, movieTitles);
-
-          // If no titles found with section marker, try parsing all numbered lines
-          if (movieTitles.length === 0) {
-            console.log("⚠️ No section marker found, trying to parse all numbered lines...");
-            for (const line of lines) {
-              const cleanLine = line.replace(/\x1b\[[0-9;]*m/g, '').trim();
-              const match = cleanLine.match(/^(\d+)\.\s+(.+)$/);
-              if (match && match[2]) {
-                const title = match[2].trim();
-                if (title && !title.includes("Discover") && !title.includes("Find Similar")) {
-                  movieTitles.push(title);
-                  console.log(`   ✓ Extracted (fallback): "${title}"`);
-                }
-              }
-            }
-            console.log(`✅ Fallback extracted ${movieTitles.length} movie titles`);
-          }
-
-          if (movieTitles.length === 0) {
-            console.warn("⚠️ No movie titles found in output. User might not have enough data.");
-            // Return empty array instead of error
-            resolve([]);
-          } else {
-            resolve(movieTitles);
-          }
-        } catch (error: any) {
-          console.error("❌ Failed to parse Python output:", error);
-          reject(new Error(`Parse error: ${error.message}`));
-        }
-      });
-
-      // Set timeout after 30 seconds
-      setTimeout(() => {
-        pythonProcess.kill();
-        reject(new Error("Python script timeout after 30 seconds"));
-      }, 30000);
     });
   } catch (error: any) {
     console.error("❌ Error in getRecommendedMovies:", error);
@@ -165,6 +185,7 @@ export const getMoviesByTitles = async (titles: string[]) => {
       return [];
     }
 
+    // Query movies WITHOUT ratings
     const movies = await prisma.movies.findMany({
       where: {
         title: {
@@ -178,9 +199,6 @@ export const getMoviesByTitles = async (titles: string[]) => {
         movie_casts: {
           include: { people: true },
         },
-        ratings: {
-          select: { score: true },
-        },
       },
     });
 
@@ -188,15 +206,35 @@ export const getMoviesByTitles = async (titles: string[]) => {
 
     if (movies.length === 0) {
       console.warn("⚠️ No movies found for the given titles. Database might not have these movies.");
+      return [];
     }
 
+    // Get ratings from movies_cleaned
+    const movieIds = movies.map(m => m.id);
+    let ratingsMap = new Map<number, { rating: number; rating_count: number }>();
+
+    if (movieIds.length > 0) {
+      const movieRatingsData = await prisma.$queryRawUnsafe<any[]>(
+        `SELECT movie_id, rating, rating_count 
+         FROM movies_cleaned 
+         WHERE movie_id IN (${movieIds.join(',')})` 
+      );
+
+      movieRatingsData.forEach(row => {
+        ratingsMap.set(row.movie_id, {
+          rating: row.rating || 0,
+          rating_count: row.rating_count || 0,
+        });
+      });
+
+      console.log(`✅ Got ratings for ${movieRatingsData.length} movies from movies_cleaned`);
+    }
+
+    // Map movies with ratings from movies_cleaned
     const moviesWithRatings = movies.map((movie) => {
-      const ratings = movie.ratings || [];
-      const validRatings = ratings.filter((r) => r.score !== null);
-      const avgRating =
-        validRatings.length > 0
-          ? validRatings.reduce((sum, r) => sum + r.score!, 0) / validRatings.length
-          : 0;
+      const ratingData = ratingsMap.get(movie.id);
+      const avgRating = ratingData?.rating || 0;
+      const ratingsCount = ratingData?.rating_count || 0;
 
       return {
         id: movie.id,
@@ -207,6 +245,7 @@ export const getMoviesByTitles = async (titles: string[]) => {
         duration: movie.duration,
         trailer_url: movie.trailer_url,
         avgRating: Number(avgRating.toFixed(1)),
+        ratingsCount: ratingsCount,
         genres: movie.movie_genres.map((mg) => ({
           id: mg.genres.id,
           name: mg.genres.name,
@@ -222,7 +261,7 @@ export const getMoviesByTitles = async (titles: string[]) => {
     // Sort movies to match the order from Python
     const sortedMovies = titles
       .map((title) => moviesWithRatings.find((m) => m.title === title))
-      .filter((m) => m !== undefined);
+      .filter((m): m is NonNullable<typeof m> => m !== undefined);
 
     console.log(`✅ Returning ${sortedMovies.length} sorted movies`);
     return sortedMovies;

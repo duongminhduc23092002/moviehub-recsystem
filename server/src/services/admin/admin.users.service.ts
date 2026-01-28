@@ -17,11 +17,11 @@ interface QueryParams {
 
 // const SALT_ROUNDS = Number(process.env.SALT_ROUNDS || 10); // ⭐ Not needed
 
-export const getAll = async (query: QueryParams) => {
-  const page = Math.max(1, Number(query.page || 1));
-  const limit = Math.min(100, Number(query.limit || 10));
+export const getAll = async (params: QueryParams) => {
+  const page = Math.max(1, Number(params.page || 1));
+  const limit = Math.min(100, Number(params.limit || 10));
   const skip = (page - 1) * limit;
-  const search = query.search ? String(query.search) : undefined;
+  const search = params.search ? String(params.search) : undefined;
 
   const where: any = {};
   if (search) {
@@ -30,42 +30,38 @@ export const getAll = async (query: QueryParams) => {
       { email: { contains: search } },
     ];
   }
-  if (query.role) {
-    where.role = query.role;
+  if (params.role) {
+    where.role = params.role;
   }
 
   try {
     const [users, total] = await Promise.all([
       prisma.users.findMany({
         where,
-        skip,
-        take: limit,
-        orderBy: { created_at: "desc" },
         select: {
           id: true,
           name: true,
           email: true,
           role: true,
           created_at: true,
-          _count: {
-            select: { ratings: true },
-          },
+          // ❌ DELETE: Xóa _count.ratings
+          // _count: {
+          //   select: { ratings: true },
+          // },
         },
+        orderBy: { created_at: "desc" },
+        take: limit,
+        skip,
       }),
       prisma.users.count({ where }),
     ]);
 
-    const data = users.map((u) => ({
-      id: u.id,
-      name: u.name,
-      email: u.email,
-      role: u.role,
-      created_at: u.created_at,
-      ratingsCount: u._count.ratings,
-    }));
-
     return {
-      data,
+      data: users.map((u) => ({
+        ...u,
+        // ❌ DELETE: Không có ratingsCount
+        // ratingsCount: u._count.ratings,
+      })),
       meta: {
         total,
         totalPages: Math.ceil(total / limit),
@@ -80,31 +76,28 @@ export const getAll = async (query: QueryParams) => {
 };
 
 export const getById = async (id: number) => {
-  try {
-    const user = await prisma.users.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        created_at: true,
-        _count: {
-          select: { ratings: true },
-        },
-      },
-    });
+  const user = await prisma.users.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      created_at: true,
+      // ❌ DELETE: Xóa _count.ratings
+      // _count: {
+      //   select: { ratings: true },
+      // },
+    },
+  });
 
-    if (!user) return null;
+  if (!user) return null;
 
-    return {
-      ...user,
-      ratingsCount: user._count.ratings,
-    };
-  } catch (error) {
-    console.error("❌ Error in getById user:", error);
-    throw new Error("Failed to fetch user");
-  }
+  return {
+    ...user,
+    // ❌ DELETE: Không có ratingsCount
+    // ratingsCount: user._count.ratings,
+  };
 };
 
 export const create = async (input: UserInput) => {
@@ -245,18 +238,23 @@ export const updateRole = async (id: number, role: "user" | "admin") => {
 
 export const remove = async (id: number) => {
   try {
+    const user = await prisma.users.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
     await prisma.$transaction(async (tx) => {
-      await tx.ratings.deleteMany({
-        where: { user_id: id },
-      });
+      // ❌ DELETE: Không xóa ratings
+      // await tx.ratings.deleteMany({ where: { user_id: id } });
 
-      await tx.watchlist.deleteMany({
-        where: { user_id: id },
-      });
+      // ⭐ Xóa users_data
+      await tx.users_data.deleteMany({ where: { user_id: id } });
 
-      await tx.users.delete({
-        where: { id },
-      });
+      await tx.users.delete({ where: { id } });
     });
 
     return true;

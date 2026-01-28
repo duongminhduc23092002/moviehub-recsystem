@@ -1,17 +1,19 @@
 import { Router } from "express";
-import * as moviesController from "../controllers/movies.controller.js";
+import * as controller from "../controllers/movies.controller.js";
 import { requireAuth } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
 // Public routes
-router.get("/", moviesController.getAll);
-router.get("/genres", moviesController.getGenres);
-router.get("/top-rated", moviesController.getTopRated);
-router.get("/:id", moviesController.getById);
-router.get("/:id/ratings", moviesController.getRatings);
+router.get("/", controller.getAll);
+router.get("/top-rated", controller.getTopRated);
+router.get("/genres", controller.getGenres); 
+router.get("/:id", controller.getById);
+router.get("/:id/ratings", controller.getMovieRatings);
 
-// ⭐ Protected route - MUST use requireAuth
-router.post("/:id/rate", requireAuth, moviesController.rateMovie);
+// Protected routes
+router.post("/:id/rate", requireAuth, controller.rateMovie);
+router.get("/:id/my-rating", requireAuth, controller.getMyRating);
+router.delete("/:id/rate", requireAuth, controller.deleteRating);
 
 export default router;

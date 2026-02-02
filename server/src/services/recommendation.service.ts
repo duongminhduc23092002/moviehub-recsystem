@@ -27,6 +27,7 @@ export const getRecommendedMovies = async (userId: number) => {
     const moviesSortedCount = await prisma.$queryRawUnsafe<any[]>(
       `SELECT COUNT(*) as count FROM movies_sorted`
     );
+
     const moviesCount = moviesSortedCount[0]?.count || 0;
 
     console.log(`📊 movies_sorted has ${moviesCount} records`);
@@ -49,23 +50,25 @@ export const getRecommendedMovies = async (userId: number) => {
 
     console.log("🚀 Spawning Python process...");
     
-    const recommendationLimit = "50"; // Number of recommendations to return
+    const recommendationLimit = 50;
+    
+    // ⭐ THAY ĐỔI: Sử dụng argparse format (--mode, --user-id, etc.)
+    const args = [
+      pythonScript,
+      "--mode", "1",                    // Mode 1: User-based recommendations
+      "--user-id", userId.toString(),   // User ID
+      "--limit", recommendationLimit.toString(),  // Limit results
+      "--filter-watched",               // Filter watched movies
+    ];
     
     console.log("   Command: python");
-    console.log("   Args:", [pythonScript, userId.toString(), recommendationLimit, "true"]);
+    console.log("   Args:", args);
 
-    const pythonProcess = spawn("python", [
-      pythonScript,
-      userId.toString(),
-      recommendationLimit,
-      "true", // filter_watched
-      "true", // ⭐ CHANGE: disable debug mode (was "true")
-    ]);
+    const pythonProcess = spawn("python", args);
 
     let output = "";
     let errorOutput = "";
     
-    // ⭐ DECLARE variables here (before using them)
     let userGenres: string[] = [];
     let userKeywords: string[] = [];
 
@@ -78,7 +81,6 @@ export const getRecommendedMovies = async (userId: number) => {
     pythonProcess.stderr.on("data", (data) => {
       const chunk = data.toString();
       
-      // ⭐ Split by newlines to handle multiple debug messages in one chunk
       const lines = chunk.split(/\r?\n/);
       
       lines.forEach(line => {
@@ -86,7 +88,7 @@ export const getRecommendedMovies = async (userId: number) => {
         
         if (!trimmed) return;
         
-        // ⭐ Parse debug info
+        // ⭐ Parse debug info (nếu có)
         if (trimmed.startsWith("DEBUG:USER_GENRES:")) {
           const genresStr = trimmed.replace("DEBUG:USER_GENRES:", "").trim();
           userGenres = genresStr ? genresStr.split(",").map(g => g.trim()) : [];
@@ -120,30 +122,36 @@ export const getRecommendedMovies = async (userId: number) => {
         const lines = output.trim().split("\n");
         console.log(`📋 Python returned ${lines.length} lines`);
 
-        // Extract movie titles (filter out ALL non-movie lines)
+        // Extract movie titles
         const movieTitles = lines
           .filter((line) => {
             const trimmed = line.trim();
             
-            // Skip empty lines
             if (!trimmed) return false;
-            
-            // Skip debug/error messages
             if (trimmed.startsWith("Running recommendation")) return false;
             if (trimmed.startsWith("Limit:")) return false;
             if (trimmed.startsWith("Filter watched:")) return false;
             if (trimmed.startsWith("Error:")) return false;
             if (trimmed.includes("Working...")) return false;
+            if (trimmed.startsWith("#")) return false;
+            if (trimmed.includes("🎬")) return false;
             if (trimmed.includes("✓")) return false;
             if (trimmed.includes("✅")) return false;
             if (trimmed.includes("❌")) return false;
             if (trimmed.includes("📋")) return false;
             if (trimmed.includes("Found")) return false;
             
-            // Only lines that look like movie titles
+            // ⭐ NEW: Check for numbered format "1. Movie Title"
+            if (/^\d+\.\s/.test(trimmed)) {
+              return true;
+            }
+            
             return true;
           })
-          .map((line) => line.trim());
+          .map((line) => {
+            // ⭐ Remove number prefix if exists: "1. Movie Title" -> "Movie Title"
+            return line.replace(/^\d+\.\s+/, "").trim();
+          });
 
         console.log(`🎬 Extracted ${movieTitles.length} movie titles:`, movieTitles);
 
@@ -267,6 +275,93 @@ export const getMoviesByTitles = async (titles: string[]) => {
     return sortedMovies;
   } catch (error: any) {
     console.error("❌ Error in getMoviesByTitles:", error);
+    throw error;
+  }
+};
+
+/**
+ * ⭐ NEW: Get similar movies - INDEPENDENT function
+ */
+export const getSimilarMovies = async (movieTitle: string, limit: number = 10) => {
+  try {
+    console.log(`🔍 [SIMILAR] Finding similar movies for: "${movieTitle}"`);
+
+    const pythonScriptPath = path.join(
+      process.cwd(),
+      "..",
+      "rec_system",
+      "MovieDude",
+      "src",
+      "main.py"
+    );
+
+    if (!fs.existsSync(pythonScriptPath)) {
+      throw new Error(`Python script not found at ${pythonScriptPath}`);
+    }
+
+    return new Promise<any[]>((resolve, reject) => {
+      // ⭐ Call Python with mode=2 (title-based)
+      const pythonProcess = spawn("python", [
+        pythonScriptPath,
+        "--mode", "2",
+        "--title", movieTitle,
+        "--limit", limit.toString(),
+      ]);
+
+      let output = "";
+      let errorOutput = "";
+
+      pythonProcess.stdout.on("data", (data) => {
+        const chunk = data.toString();
+        output += chunk;
+      });
+
+      pythonProcess.stderr.on("data", (data) => {
+        const chunk = data.toString();
+        errorOutput += chunk;
+        console.error("⚠️ [SIMILAR] Python stderr:", chunk);
+      });
+
+      pythonProcess.on("close", async (code) => {
+        if (code !== 0) {
+          console.error("❌ [SIMILAR] Python failed:", errorOutput);
+          reject(new Error(`Python process failed: ${errorOutput}`));
+          return;
+        }
+
+        // Parse titles
+        const movieTitles = output
+          .split("\n")
+          .filter((line) => {
+            const trimmed = line.trim();
+            return /^\d+\.\s/.test(trimmed); // Format: "1. Movie Title"
+          })
+          .map((line) => line.replace(/^\d+\.\s+/, "").trim());
+
+        console.log(`🎬 [SIMILAR] Extracted ${movieTitles.length} titles`);
+
+        if (movieTitles.length === 0) {
+          resolve([]);
+          return;
+        }
+
+        try {
+          const movies = await getMoviesByTitles(movieTitles);
+          console.log(`✅ [SIMILAR] Returning ${movies.length} movies`);
+          resolve(movies);
+        } catch (error: any) {
+          console.error("❌ [SIMILAR] Error fetching movies:", error);
+          reject(error);
+        }
+      });
+
+      pythonProcess.on("error", (error) => {
+        console.error("❌ [SIMILAR] Failed to start Python:", error);
+        reject(new Error(`Failed to start Python: ${error.message}`));
+      });
+    });
+  } catch (error: any) {
+    console.error("❌ [SIMILAR] Error:", error);
     throw error;
   }
 };

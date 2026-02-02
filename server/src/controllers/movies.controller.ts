@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { AuthRequest } from "../middlewares/auth.middleware.js";
 import * as moviesService from "../services/movies.service.js";
 import prisma from "../prisma/client.js"; // ⭐ ADD THIS
+import * as recommendationService from "../services/recommendation.service.js";
 
 export const getAll = async (req: Request, res: Response) => {
   try {
@@ -230,6 +231,52 @@ export const deleteRating = async (req: AuthRequest, res: Response) => {
     res.status(500).json({
       success: false,
       message: err.message || "Failed to delete rating",
+    });
+  }
+};
+
+export const getSimilarMovies = async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    const limit = Math.min(20, Number(req.query.limit || 10));
+
+    if (isNaN(id) || id <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid movie ID"
+      });
+    }
+
+    // Get movie title
+    const movie = await moviesService.getById(id);
+    if (!movie) {
+      return res.status(404).json({
+        success: false,
+        message: "Movie not found"
+      });
+    }
+
+    console.log(`🔍 Finding similar movies for: ${movie.title}`);
+
+    // Get similar movies from Python recommendation engine
+    const similarMovies = await recommendationService.getSimilarMovies(movie.title, limit);
+
+    res.json({
+      success: true,
+      data: similarMovies,
+      meta: {
+        total: similarMovies.length,
+        baseMovie: {
+          id: movie.id,
+          title: movie.title,
+        },
+      },
+    });
+  } catch (err: any) {
+    console.error('❌ Error in getSimilarMovies:', err);
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to get similar movies"
     });
   }
 };

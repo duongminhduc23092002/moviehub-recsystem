@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { getMovieById, getMovieRatings, getMyRating, rateMovie, deleteMyRating } from "../api/movieApi";
+import { getSimilarMovies } from "../api/movieApi";
 import { useAuth } from "../context/AuthContext";
 import { useWatchlist } from "../context/WatchlistContext"; // ⭐ ADD THIS LINE
 import RatingModal from "../components/RatingModal";
 import TrailerModal from "../components/TrailerModal";
+import MovieCard from "../components/MovieCard";
 
 interface Movie {
   id: number;
@@ -45,6 +47,10 @@ export default function MovieDetail() {
   const [myRating, setMyRating] = useState<{ rating: number; comment: string | null } | null>(null);
   const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
 
+  // Similar movies
+  const [similarMovies, setSimilarMovies] = useState<Movie[]>([]);
+  const [loadingSimilar, setLoadingSimilar] = useState(false);
+
   // Fetch movie data
   const fetchMovie = async () => {
     try {
@@ -80,6 +86,7 @@ export default function MovieDetail() {
     if (id) {
       fetchMovie();
       fetchRatings();
+      fetchSimilarMovies();  // ⭐ THÊM: Gọi fetch similar movies
       if (isAuthenticated) {
         fetchMyRating();
       }
@@ -92,6 +99,23 @@ export default function MovieDetail() {
       setRatings(response.data || []);
     } catch (error) {
       console.error("Error fetching ratings:", error);
+    }
+  };
+
+  // ⭐ THÊM: Function fetch similar movies
+  const fetchSimilarMovies = async () => {
+    if (!id) return;
+    
+    try {
+      setLoadingSimilar(true);
+      const response = await getSimilarMovies(Number(id), 12);
+      setSimilarMovies(response.data || []);
+      console.log(`✅ Loaded ${response.data?.length || 0} similar movies`);
+    } catch (error) {
+      console.error("Error loading similar movies:", error);
+      setSimilarMovies([]);
+    } finally {
+      setLoadingSimilar(false);
     }
   };
 
@@ -332,13 +356,39 @@ export default function MovieDetail() {
         </section>
       )}
 
-      {/* Similar Movies Section - Placeholder */}
+      {/* Similar Movies Section */}
       <section className="py-16 bg-netflix-black">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold text-white mb-8">Phim tương tự</h2>
-          <div className="text-center py-12 text-netflix-light">
-            <p>Tính năng đang được phát triển...</p>
-          </div>
+          
+          {loadingSimilar ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6">
+              {[...Array(12)].map((_, i) => (
+                <div key={i} className="aspect-[2/3] bg-netflix-gray rounded-xl animate-pulse" />
+              ))}
+            </div>
+          ) : similarMovies.length > 0 ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6">
+              {similarMovies.map((movie, index) => (
+                <div
+                  key={movie.id}
+                  className="animate-slide-up"
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
+                  <MovieCard movie={movie} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 glass-card rounded-xl">
+              <svg className="w-16 h-16 mx-auto text-netflix-light mb-4" fill="none" 
+                   stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                      d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4" />
+              </svg>
+              <p className="text-netflix-light">Không tìm thấy phim tương tự</p>
+            </div>
+          )}
         </div>
       </section>
 

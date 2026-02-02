@@ -20,7 +20,7 @@ def movie_recommender(user_id: str, recommendation_input, filter_watched: bool, 
     Movie recommendation engine.
     
     Args:
-        user_id: INT or STR (will be converted to INT)
+        user_id: INT or STR (will be converted to INT) or None (⭐ THÊM: for title-based similarity)
         recommendation_input: [genres_list, keywords_list]
         filter_watched: bool
         filter_top_rank: bool
@@ -28,13 +28,14 @@ def movie_recommender(user_id: str, recommendation_input, filter_watched: bool, 
     Returns:
         List of movie titles
     """
-    # ⭐ Ensure user_id is INTEGER
-    user_id = int(user_id)
+    # ⭐ THÊM: Ensure user_id is INTEGER or None
+    if user_id is not None:
+        user_id = int(user_id)
     
-    # ⭐ Validate recommendation_input
+    # ⭐ THÊM: Validate recommendation_input
     if not recommendation_input or recommendation_input is None:
         import sys
-        print(f"No recommendation input for user {user_id}", file=sys.stderr)
+        print(f"No recommendation input provided", file=sys.stderr)
         return []
     
     # ❌ REMOVE all debug prints
@@ -51,8 +52,8 @@ def movie_recommender(user_id: str, recommendation_input, filter_watched: bool, 
     # ❌ REMOVE
     # print(f"📊 Loaded {len(df)} movies from movies_sorted")
 
-    # Filter watched movies
-    if filter_watched:
+    # ⭐ THÊM: Filter watched movies ONLY if user_id is provided
+    if user_id is not None and filter_watched:
         watched = catch_watched_movies(user_id)
         df = df[~df["movie_id"].isin(watched)]
         # ❌ REMOVE

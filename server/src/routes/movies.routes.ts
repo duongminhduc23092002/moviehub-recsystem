@@ -9,6 +9,7 @@ router.get("/", controller.getAll);
 router.get("/top-rated", controller.getTopRated);
 router.get("/genres", controller.getGenres); 
 router.get("/:id", controller.getById);
+router.get("/:id/similar", controller.getSimilarMovies); // ⭐ NEW
 router.get("/:id/ratings", controller.getMovieRatings);
 
 // Protected routes

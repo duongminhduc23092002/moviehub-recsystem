@@ -113,10 +113,17 @@ export const checkInWatchlist = async (movieId: number) => {
   const res = await api.get(`/watchlist/${movieId}/check`);
   return res.data;
 };
+
 // ========== RECOMMENDATION API ==========
 
 export const getRecommendedMovies = async () => {
   const res = await api.get("/recommendations");
   return res.data;
 };
+
+export const getSimilarMovies = async (movieId: number, limit: number = 10) => {
+  const res = await api.get(`/movies/${movieId}/similar`, { params: { limit } });
+  return res.data;
+};
+
 export default api;
